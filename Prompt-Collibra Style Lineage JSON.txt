@@ -1,0 +1,255 @@
+create a collibra style lineage json considering the following SAS Lineage to calculate average monthly balance for each customer accounts based on all DAILY_BALANCE in that month
+- use the metadata, assets and relationships 
+- use the SAS code for the logic and to include in the lineage source code highlights
+- use the sample collibra lineage json included
+- collapse all the intermediate steps and show only high-level dataset-to-dataset lineage (without intermediate tables) to make it simpler
+- group the two input to JOB03_CALC_AVG_BAL into a single JSON entry instead of two separate lines (so it shows one transformation with two sources)
+
+Metadata:
+CUSTOMER
+customer_id, first_name, last_name, email, birth_dt, Street_Address, City, State, Zipcode, Age
+
+CUST_ACCOUNTS
+customer_id, account_id, account_type, is_active, start_date, end_date
+
+DAILY_BALANCE
+customer_id, account_id, date, end_of_day_balance
+
+MONTHLY_AMB
+customer_id, account_id, reporting_month_yyyymm, average_monthly_balance, date_computed
+
+
+Assets
+Dataset: CUST_ACCOUNTS.sas7bdat
+Dataset: DAILY_BALANCE.sas7bdat
+Job: JOB01_LOAD_CUST_ACCOUNTS
+Job: JOB02_LOAD_DAILY_BALANCE
+Job: JOB03_CALC_AMB
+Dataset: WORK.CUST_ACCOUNTS
+Dataset: WORK.DAILY_BALANCE
+Dataset: WORK.MONTHLY_AMB
+
+
+Relationships
+CUST_ACCOUNTS.sas7bdat → consumed by JOB01_LOAD_CUST_ACCOUNTS
+JOB01_LOAD_CUST_ACCOUNTS → produces WORK.CUST_ACCOUNTS
+DAILY_BALANCE.sas7bdat → consumed by JOB02_LOAD_DAILY_BALANCE
+JOB02_LOAD_DAILY_BALANCE → produces WORK.DAILY_BALANCE
+WORK.DAILY_BALANCE → consumed by JOB03_CALC_AMB
+WORK.CUST_ACCOUNTS → consumed by JOB03_CALC_AMB
+JOB03_CALC_AMB → produces WORK.MONTHLY_AMB
+
+
+SAS code that calcluate the MONTHLY_AMB
+/* Step 1: Derive reporting month (YYYYMM) from the date */
+data daily_balance_with_month;
+    set daily_balance;
+    format reporting_month_yyyymm $6.;
+    reporting_month_yyyymm = cats(put(year(date), 4.), put(month(date), z2.));
+run;
+
+/* Step 2: Calculate AMB per customer/account/month */
+proc sql;
+    create table amb_new as
+    select 
+        customer_id,
+        account_id,
+        reporting_month_yyyymm,
+        mean(end_of_day_balance) as average_monthly_balance,
+        today() as date_computed format=date9.
+    from daily_balance_with_month
+    group by customer_id, account_id, reporting_month_yyyymm;
+quit;
+
+/* Step 3: Append the new results into the existing MONTHLY_AMB table */
+proc append base=monthly_amb data=amb_new force;
+run;
+
+Sample collibra json for creating the lineage json
+[{
+    "src": {
+      "nodes": [{
+        "name": "snowflake",
+        "type": "System"
+      }, {
+        "name": "DB1",
+        "type": "Database"
+      }, {
+        "name": "PUBLIC",
+        "type": "Schema"
+      }],
+      "parent": {
+        "name": "T1",
+        "type": "Table"
+      },
+      "leaf": {
+        "name": "col1",
+        "type": "Column"
+      }
+    },
+    "trg": {
+      "nodes": [{
+        "name": "snowflake",
+        "type": "System"
+      }, {
+        "name": "DB1",
+        "type": "Database"
+      }, {
+        "name": "PUBLIC",
+        "type": "Schema"
+      }],
+      "parent": {
+        "name": "VIEW_1",
+        "type": "Table"
+      },
+      "leaf": {
+        "name": "col1",
+        "type": "Column"
+      }
+    }
+  }, {
+    "src": {
+      "nodes": [{
+        "name": "snowflake",
+        "type": "System"
+      }, {
+        "name": "DB1",
+        "type": "Database"
+      }, {
+        "name": "PUBLIC",
+        "type": "Schema"
+      }],
+      "parent": {
+        "name": "T1",
+        "type": "Table"
+      },
+      "leaf": {
+        "name": "col1",
+        "type": "Column"
+      }
+    },
+    "trg": {
+      "nodes": [{
+        "name": "snowflake",
+        "type": "System"
+      }, {
+        "name": "DB1",
+        "type": "Database"
+      }, {
+        "name": "PUBLIC",
+        "type": "Schema"
+      }],
+      "parent": {
+        "name": "VIEW_1",
+        "type": "Table"
+      },
+      "leaf": {
+        "name": "col2",
+        "type": "Column"
+      }
+    },
+    "source_code": {
+      "path": "source_codes/source_code_view_1.txt",
+      "highlights": [{
+        "start": 0,
+        "len": 43
+      }],
+      "transformation_display_name": "view_1 creation"
+    }
+  }, {
+    "src": {
+      "nodes": [{
+        "name": "snowflake",
+        "type": "System"
+      }, {
+        "name": "DB1",
+        "type": "Database"
+      }, {
+        "name": "PUBLIC",
+        "type": "Schema"
+      }],
+      "parent": {
+        "name": "T1",
+        "type": "Table"
+      },
+      "leaf": {
+        "name": "col2",
+        "type": "Column"
+      }
+    },
+    "trg": {
+      "nodes": [{
+        "name": "snowflake",
+        "type": "System"
+      }, {
+        "name": "DB1",
+        "type": "Database"
+      }, {
+        "name": "PUBLIC",
+        "type": "Schema"
+      }],
+      "parent": {
+        "name": "VIEW_1",
+        "type": "Table"
+      }
+    }
+  },
+  {
+    "src": {
+      "nodes": [{
+        "name": "snowflake",
+        "type": "System"
+      }, {
+        "name": "DB1",
+        "type": "Database"
+      }, {
+        "name": "PUBLIC",
+        "type": "Schema"
+      }],
+      "parent": {
+        "name": "T2",
+        "type": "Table"
+      }
+    },
+    "trg": {
+      "nodes": [{
+        "name": "snowflake",
+        "type": "System"
+      }, {
+        "name": "DB1",
+        "type": "Database"
+      }, {
+        "name": "PUBLIC",
+        "type": "Schema"
+      }],
+      "parent": {
+        "name": "VIEW_2",
+        "type": "Table"
+      }
+    },
+    "source_code": {
+      "path": "source_codes/source_code_view_2.txt",
+      "highlights": [{
+        "start": 0,
+        "len": 39
+      }],
+      "transformation_display_name": "view_2 creation"
+    }
+  }
+]
+
+Sample Snowflake SQL
+-- Derive reporting month (YYYYMM) and calculate AMB
+create or replace table STAGING.MONTHLY_AMB as
+select 
+    d.customer_id,
+    d.account_id,
+    to_char(d.date,'YYYYMM') as reporting_month_yyyymm,
+    avg(d.end_of_day_balance) as average_monthly_balance,
+    current_date as date_computed
+from STAGING.DAILY_BALANCE d
+join STAGING.CUST_ACCOUNTS c
+  on d.customer_id = c.customer_id
+ and d.account_id  = c.account_id
+group by d.customer_id, d.account_id, to_char(d.date,'YYYYMM')
+WHERE c.is_active = 'ACTIVE'";
